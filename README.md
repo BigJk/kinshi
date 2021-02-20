@@ -4,6 +4,12 @@
 
 While working on the architecture of a [7DRL](https://7drl.com/) game I noticed there wasn't any small and dynamic ECS implementations in go that fitted my bill. I came up with my own small solution, which I dubbed "kinshin" (禁止, japanese for 'forbidden'). Why forbidden? Because this ECS is build on reflection magic and should probably not be used in any serious projects. You lose a lot of compile time checks that way and it probably isn't great performance wise, but for my use case for a small turn based roguelike that doesn't matter.
 
+## Get It
+
+```
+go get github.com/BigJk/kinshi
+```
+
 ## Example
 
 ```go
