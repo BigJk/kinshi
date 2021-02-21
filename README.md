@@ -68,7 +68,7 @@ func main() {
 		_ = ent.View(func(p *Pos, v *Velocity) {
 			fmt.Printf("[ent=%d] x=%.2f y=%.2f vx=%.2f vy=%.2f\n", ent.GetEntity().ID(), p.X, p.Y, v.X, v.Y)
 
-			// Edits to p and v inside this function be saved to the entity after the function is finished
+			// p and v point directly to the components that are inside the entity!
 		})
 	}
   
@@ -80,7 +80,7 @@ func main() {
 		_ = ent.ViewSpecific(func(u *Unit) {
 			fmt.Printf("[ent=%d] x=%.2f y=%.2f vx=%.2f vy=%.2f\n", ent.GetEntity().ID(), u.Pos.X, u.Pos.Y, u.Velocity.X, u.Velocity.Y)
 
-			// Edits to u inside this function be saved to the entity after the function is finished
+			// u points directly to the entity!
 		})
 	}
 }
