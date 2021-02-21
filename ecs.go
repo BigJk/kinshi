@@ -80,11 +80,9 @@ func (ew *EntityWrap) GetEntity() Entity {
 	return ew.ent
 }
 
-// View calls fn with pointer to requested components. If you modify
-// the data inside the fn function the changes will be copied to the
-// Entity after the function returns. If fn returns a error and the
-// returned error is != nil the changes to the data will not be copied
-// to the Entity.
+// View calls fn with pointer to requested components. If you change
+// any data it will directly modify the Entity data. The pointer that
+// the fn functions is called with are pointing straight to the components.
 //
 // For example you want to get a view on the Pos{} and Velocity{} struct:
 //    ew.View(func(p *Pos, v *Velocity) {
@@ -100,16 +98,21 @@ func (ew *EntityWrap) View(fn interface{}) error {
 	var callInstances []reflect.Value
 
 	for i := 0; i < fnType.NumIn(); i++ {
-		ptr := reflect.New(fnType.In(i).Elem())
+		compName := fnType.In(i).Elem().Name()
 
-		if err := findType(ew.ent, ptr.Interface()); err != nil {
-			if dyn, ok := ew.ent.(DynamicEntity); ok && dyn.HasComponent(ptr.Interface()) == nil && dyn.GetComponent(ptr.Interface()) == nil {
+		ptr, err := fetchPtrOfType(ew.ent, compName)
+		if err != nil {
+			if dyn, ok := ew.ent.(DynamicEntity); ok {
+				ptr, err := dyn.GetComponent(compName)
+				if err != nil {
+					return err
+				}
+				callInstances = append(callInstances, reflect.ValueOf(ptr))
 			} else {
 				return err
 			}
 		}
-
-		callInstances = append(callInstances, ptr)
+		callInstances = append(callInstances, reflect.ValueOf(ptr))
 	}
 
 	res := reflect.ValueOf(fn).Call(callInstances)
@@ -122,21 +125,12 @@ func (ew *EntityWrap) View(fn interface{}) error {
 		}
 	}
 
-	for i := range callInstances {
-		if err := setType(ew.ent, callInstances[i].Interface()); err != nil {
-			if dyn, ok := ew.ent.(DynamicEntity); ok && dyn.HasComponent(callInstances[i].Interface()) == nil && dyn.SetComponent(callInstances[i].Interface()) == nil {
-			} else {
-				return err
-			}
-		}
-	}
-
 	return nil
 }
 
 // ViewSpecific calls fn with pointer to the specific requested struct.
 // Its like fetching a named Entity. Changes to the struct data directly
-// applies to the backing Entity and there is no rollback like in View.
+// applies to the Entity.
 //
 // For example you want to get a view on the Player{} Entity struct:
 //    ew.ViewSpecific(func(p *Player) {

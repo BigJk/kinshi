@@ -41,7 +41,7 @@ type DynamicEntity interface {
 	Entity
 	SetComponent(interface{}) error
 	RemoveComponent(interface{}) error
-	GetComponent(interface{}) error
+	GetComponent(string) (interface{}, error)
 	HasComponent(interface{}) error
 	GetComponents() []interface{}
 }
@@ -87,10 +87,8 @@ func (b *BaseDynamicEntity) RemoveComponent(c interface{}) error {
 	return ErrNotFound
 }
 
-// GetComponent tries to fetch a component of the
-// type of out. out needs to be a pointer to the target
-// data. The fetched component will be copied to out.
-func (b *BaseDynamicEntity) GetComponent(out interface{}) error {
+// GetComponent tries to fetch a component by name.
+func (b *BaseDynamicEntity) GetComponent(t string) (interface{}, error) {
 	b.Lock()
 	defer b.Unlock()
 
@@ -98,17 +96,18 @@ func (b *BaseDynamicEntity) GetComponent(out interface{}) error {
 		b.components = map[string]interface{}{}
 	}
 
-	if val, ok := b.components[getTypeName(out)]; ok {
-		reflect.ValueOf(out).Elem().Set(reflect.ValueOf(val))
-		return nil
+	if val, ok := b.components[t]; ok {
+		return reflect.ValueOf(val).Addr().Interface(), nil
 	}
 
-	return ErrNotFound
+	return nil, ErrNotFound
 }
 
-// HasComponent checks if the entity has a component
-// of the type that out has.
-func (b *BaseDynamicEntity) HasComponent(out interface{}) error {
+// HasComponent checks if the entity has a certain component.
+// If t is a string it will check if a component is present by name.
+// If t is a struct or a pointer to a struct the name of the type
+// will be used to check if the component is present.
+func (b *BaseDynamicEntity) HasComponent(t interface{}) error {
 	b.Lock()
 	defer b.Unlock()
 
@@ -116,7 +115,15 @@ func (b *BaseDynamicEntity) HasComponent(out interface{}) error {
 		b.components = map[string]interface{}{}
 	}
 
-	if _, ok := b.components[getTypeName(out)]; ok {
+	var typeName string
+	switch t.(type) {
+	case string:
+		typeName = t.(string)
+	default:
+		typeName = getTypeName(t)
+	}
+
+	if _, ok := b.components[typeName]; ok {
 		return nil
 	}
 
@@ -135,7 +142,7 @@ func (b *BaseDynamicEntity) GetComponents() []interface{} {
 
 	var comps []interface{}
 	for _, v := range b.components {
-		comps = append(comps, v)
+		comps = append(comps, reflect.ValueOf(v).Addr().Interface())
 	}
 
 	return comps

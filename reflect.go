@@ -31,43 +31,15 @@ func hasType(s interface{}, t interface{}) error {
 	return nil
 }
 
-func findType(s interface{}, out interface{}) error {
+func fetchPtrOfType(s interface{}, typeName string) (interface{}, error) {
 	if reflect.TypeOf(s).Elem().Kind() != reflect.Struct {
-		return fmt.Errorf("target wasn't a struct")
+		return nil, fmt.Errorf("target wasn't a struct")
 	}
 
-	if reflect.TypeOf(out).Kind() != reflect.Ptr {
-		return fmt.Errorf("out wasn't a pointer")
-	}
-
-	searchElem := reflect.TypeOf(out).Elem()
-	foundVal := reflect.ValueOf(s).Elem().FieldByName(searchElem.Name())
+	foundVal := reflect.ValueOf(s).Elem().FieldByName(typeName)
 	if !foundVal.IsValid() {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
 
-	reflect.ValueOf(out).Elem().Set(foundVal)
-	return nil
-}
-
-func setType(s interface{}, in interface{}) error {
-	if reflect.TypeOf(s).Elem().Kind() != reflect.Struct {
-		return fmt.Errorf("target wasn't a struct")
-	}
-
-	var valIn reflect.Value
-	if reflect.TypeOf(in).Kind() == reflect.Ptr {
-		valIn = reflect.ValueOf(in).Elem()
-	} else {
-		valIn = reflect.ValueOf(in)
-	}
-
-	searchElem := reflect.TypeOf(in).Elem()
-	foundVal := reflect.ValueOf(s).Elem().FieldByName(searchElem.Name())
-	if !foundVal.IsValid() {
-		return ErrNotFound
-	}
-
-	foundVal.Set(valIn)
-	return nil
+	return foundVal.Addr().Interface(), nil
 }
