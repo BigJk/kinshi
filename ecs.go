@@ -72,7 +72,8 @@ func (ecs *ECS) RemoveEntity(ent Entity) error {
 // EntityWrap is a wrapper for Entity that provides functions
 // to get a view into the Entity components.
 type EntityWrap struct {
-	ent Entity
+	parent *ECS
+	ent    Entity
 }
 
 // GetEntity returns the wrapped Entity.
@@ -96,6 +97,9 @@ func (ew *EntityWrap) View(fn interface{}) error {
 
 	fnType := reflect.TypeOf(fn)
 	var callInstances []reflect.Value
+
+	ew.parent.Lock()
+	defer ew.parent.Unlock()
 
 	for i := 0; i < fnType.NumIn(); i++ {
 		compName := fnType.In(i).Elem().Name()
@@ -146,6 +150,9 @@ func (ew *EntityWrap) ViewSpecific(fn interface{}) error {
 		return fmt.Errorf("fn needs a single argument")
 	}
 
+	ew.parent.Lock()
+	defer ew.parent.Unlock()
+
 	reflect.ValueOf(fn).Call([]reflect.Value{reflect.ValueOf(ew.ent)})
 
 	return nil
@@ -172,6 +179,9 @@ func (it EntityIterator) Count() int {
 //        // Work with the EntityWrap
 //    }
 func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
+	ecs.Lock()
+	defer ecs.Unlock()
+
 	var foundEnts []*EntityWrap
 
 	for _, v := range ecs.entities {
@@ -187,7 +197,7 @@ func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
 			}
 		}
 		if allFound {
-			foundEnts = append(foundEnts, &EntityWrap{ent: v})
+			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: v})
 		}
 	}
 
@@ -203,13 +213,16 @@ func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
 //        // Work with the EntityWrap
 //    }
 func (ecs *ECS) IterateSpecific(t interface{}) EntityIterator {
+	ecs.Lock()
+	defer ecs.Unlock()
+
 	var foundEnts []*EntityWrap
 
 	searchName := getTypeName(t)
 
 	for _, v := range ecs.entities {
 		if getTypeName(v) == searchName {
-			foundEnts = append(foundEnts, &EntityWrap{ent: v})
+			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: v})
 		}
 	}
 
@@ -219,11 +232,14 @@ func (ecs *ECS) IterateSpecific(t interface{}) EntityIterator {
 // IterateID returns a iterator that can be range'd over for
 // the given Entity ids.
 func (ecs *ECS) IterateID(ids ...EntityID) EntityIterator {
+	ecs.Lock()
+	defer ecs.Unlock()
+
 	var foundEnts []*EntityWrap
 
 	for i := range ids {
 		if v, ok := ecs.entities[ids[i]]; ok {
-			foundEnts = append(foundEnts, &EntityWrap{ent: v})
+			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: v})
 		}
 	}
 
@@ -232,8 +248,11 @@ func (ecs *ECS) IterateID(ids ...EntityID) EntityIterator {
 
 // Get fetches a Entity by id.
 func (ecs *ECS) Get(id EntityID) (*EntityWrap, error) {
+	ecs.Lock()
+	defer ecs.Unlock()
+
 	if v, ok := ecs.entities[id]; ok {
-		return &EntityWrap{ent: v}, nil
+		return &EntityWrap{parent: ecs, ent: v}, nil
 	}
 	return nil, ErrNotFound
 }
@@ -248,5 +267,5 @@ func (ecs *ECS) MustGet(id EntityID) *EntityWrap {
 // Access creates a EntityWrap for a given Entity so that
 // the data of the Entity can be accessed in a convenient way.
 func (ecs *ECS) Access(ent Entity) *EntityWrap {
-	return &EntityWrap{ent: ent}
+	return &EntityWrap{parent: ecs, ent: ent}
 }
