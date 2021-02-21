@@ -37,6 +37,10 @@ func (ecs *ECS) nextId() EntityID {
 // AddEntity adds a Entity to the ECS storage and
 // returns the assigned EntityID.
 func (ecs *ECS) AddEntity(ent Entity) (EntityID, error) {
+	if reflect.TypeOf(ent).Kind() != reflect.Ptr {
+		return EntityNone, fmt.Errorf("please pass your entity as pointer")
+	}
+
 	if ent.ID() == 0 {
 		ent.SetID(ecs.nextId())
 	}
@@ -116,10 +120,13 @@ func (ew *EntityWrap) View(fn interface{}) error {
 				return err
 			}
 		}
+
 		callInstances = append(callInstances, reflect.ValueOf(ptr))
 	}
 
 	res := reflect.ValueOf(fn).Call(callInstances)
+
+	// If the user supplied function returns a error return it
 	if len(res) == 1 {
 		if res[0].Interface() != nil {
 			err := res[0].Interface().(error)
