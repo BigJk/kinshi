@@ -13,16 +13,23 @@ var (
 	ErrAlreadyExists = errors.New("already exists")
 )
 
+type typeMeta struct {
+	t      reflect.Type
+	fields map[string]struct{}
+}
+
 type ECS struct {
 	sync.Mutex
 	idCounter uint64
 	entities  map[EntityID]Entity
+	metaCache map[string]typeMeta
 }
 
 // New creates a new instance of a ECS
 func New() *ECS {
 	return &ECS{
-		entities: map[EntityID]Entity{},
+		entities:  map[EntityID]Entity{},
+		metaCache: map[string]typeMeta{},
 	}
 }
 
@@ -32,6 +39,26 @@ func (ecs *ECS) nextId() EntityID {
 
 	ecs.idCounter += 1
 	return EntityID(ecs.idCounter)
+}
+
+func (ecs *ECS) cacheType(ent Entity) {
+	tn := getTypeName(ent)
+	if _, ok := ecs.metaCache[tn]; ok {
+		return
+	}
+
+	t := reflect.TypeOf(ent).Elem()
+	ecs.metaCache[tn] = typeMeta{
+		t:      t,
+		fields: map[string]struct{}{},
+	}
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.Type.Kind() == reflect.Struct {
+			ecs.metaCache[tn].fields[field.Name] = struct{}{}
+		}
+	}
 }
 
 // AddEntity adds a Entity to the ECS storage and
@@ -47,6 +74,8 @@ func (ecs *ECS) AddEntity(ent Entity) (EntityID, error) {
 
 	ecs.Lock()
 	defer ecs.Unlock()
+
+	ecs.cacheType(ent)
 
 	if _, ok := ecs.entities[ent.ID()]; ok {
 		return ent.ID(), ErrAlreadyExists
@@ -194,13 +223,17 @@ func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
 	for _, v := range ecs.entities {
 		allFound := true
 		for i := range types {
-			if err := hasType(v, types[i]); err != nil {
-				if dyn, ok := v.(DynamicEntity); ok && dyn.HasComponent(types[i]) == nil {
-
-				} else {
-					allFound = false
-					break
+			if val, ok := ecs.metaCache[getTypeName(v)]; ok {
+				if _, ok := val.fields[getTypeName(types[i])]; ok {
+					continue
 				}
+			}
+
+			if dyn, ok := v.(DynamicEntity); ok && dyn.HasComponent(types[i]) == nil {
+
+			} else {
+				allFound = false
+				break
 			}
 		}
 		if allFound {

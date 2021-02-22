@@ -194,4 +194,8 @@ func BenchmarkECS_Iterate(b *testing.B) {
 	b.Run("100000", func(b *testing.B) {
 		runForN(100000, b)
 	})
+
+	b.Run("1000000", func(b *testing.B) {
+		runForN(1000000, b)
+	})
 }
