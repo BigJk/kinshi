@@ -141,7 +141,7 @@ func BenchmarkECS_AddEntity(b *testing.B) {
 				Y: 0,
 			},
 			Name: Name{
-				Value: fmt.Sprint(i),
+				Value: "name",
 			},
 		})
 	}
@@ -167,7 +167,7 @@ func BenchmarkECS_Iterate(b *testing.B) {
 			})
 			_, _ = ecs.AddEntity(&DynamicUnit{
 				Name: Name{
-					Value: fmt.Sprint(i),
+					Value: "name",
 				},
 			})
 		}
