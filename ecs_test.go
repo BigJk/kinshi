@@ -125,3 +125,73 @@ func TestECS(t *testing.T) {
 		}
 	})
 }
+
+func BenchmarkECS_AddEntity(b *testing.B) {
+	ecs := New()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, _ = ecs.AddEntity(&Unit{
+			Health: Health{
+				Value: 100,
+				Max:   150,
+			},
+			Pos: Pos{
+				X: 0,
+				Y: 0,
+			},
+			Name: Name{
+				Value: fmt.Sprint(i),
+			},
+		})
+	}
+}
+
+func BenchmarkECS_Iterate(b *testing.B) {
+	runForN := func(n int, b *testing.B) {
+		ecs := New()
+
+		for i := 0; i < n/2; i++ {
+			_, _ = ecs.AddEntity(&Unit{
+				Health: Health{
+					Value: 100,
+					Max:   150,
+				},
+				Pos: Pos{
+					X: 0,
+					Y: 0,
+				},
+				Name: Name{
+					Value: fmt.Sprint(i),
+				},
+			})
+			_, _ = ecs.AddEntity(&DynamicUnit{
+				Name: Name{
+					Value: fmt.Sprint(i),
+				},
+			})
+		}
+
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			ecs.Iterate(Health{}, Pos{}, Name{})
+		}
+	}
+
+	b.Run("100", func(b *testing.B) {
+		runForN(100, b)
+	})
+
+	b.Run("1000", func(b *testing.B) {
+		runForN(1000, b)
+	})
+
+	b.Run("10000", func(b *testing.B) {
+		runForN(10000, b)
+	})
+
+	b.Run("100000", func(b *testing.B) {
+		runForN(100000, b)
+	})
+}
