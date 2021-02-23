@@ -18,17 +18,22 @@ type typeMeta struct {
 	fields map[string]struct{}
 }
 
+type entityEntry struct {
+	typeName string
+	ent      Entity
+}
+
 type ECS struct {
 	sync.Mutex
 	idCounter uint64
-	entities  map[EntityID]Entity
+	entities  map[EntityID]entityEntry
 	metaCache map[string]typeMeta
 }
 
 // New creates a new instance of a ECS
 func New() *ECS {
 	return &ECS{
-		entities:  map[EntityID]Entity{},
+		entities:  map[EntityID]entityEntry{},
 		metaCache: map[string]typeMeta{},
 	}
 }
@@ -81,7 +86,10 @@ func (ecs *ECS) AddEntity(ent Entity) (EntityID, error) {
 		return ent.ID(), ErrAlreadyExists
 	}
 
-	ecs.entities[ent.ID()] = ent
+	ecs.entities[ent.ID()] = entityEntry{
+		typeName: getTypeName(ent),
+		ent:      ent,
+	}
 	return ent.ID(), nil
 }
 
@@ -223,13 +231,13 @@ func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
 	for _, v := range ecs.entities {
 		allFound := true
 		for i := range types {
-			if val, ok := ecs.metaCache[getTypeName(v)]; ok {
+			if val, ok := ecs.metaCache[v.typeName]; ok {
 				if _, ok := val.fields[getTypeName(types[i])]; ok {
 					continue
 				}
 			}
 
-			if dyn, ok := v.(DynamicEntity); ok && dyn.HasComponent(types[i]) == nil {
+			if dyn, ok := v.ent.(DynamicEntity); ok && dyn.HasComponent(types[i]) == nil {
 
 			} else {
 				allFound = false
@@ -237,7 +245,7 @@ func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
 			}
 		}
 		if allFound {
-			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: v})
+			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: v.ent})
 		}
 	}
 
@@ -261,8 +269,8 @@ func (ecs *ECS) IterateSpecific(t interface{}) EntityIterator {
 	searchName := getTypeName(t)
 
 	for _, v := range ecs.entities {
-		if getTypeName(v) == searchName {
-			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: v})
+		if v.typeName == searchName {
+			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: v.ent})
 		}
 	}
 
@@ -279,7 +287,7 @@ func (ecs *ECS) IterateID(ids ...EntityID) EntityIterator {
 
 	for i := range ids {
 		if v, ok := ecs.entities[ids[i]]; ok {
-			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: v})
+			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: v.ent})
 		}
 	}
 
@@ -292,7 +300,7 @@ func (ecs *ECS) Get(id EntityID) (*EntityWrap, error) {
 	defer ecs.Unlock()
 
 	if v, ok := ecs.entities[id]; ok {
-		return &EntityWrap{parent: ecs, ent: v}, nil
+		return &EntityWrap{parent: ecs, ent: v.ent}, nil
 	}
 	return nil, ErrNotFound
 }
