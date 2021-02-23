@@ -104,6 +104,7 @@ func (ecs *ECS) RemoveEntity(ent Entity) error {
 
 	if _, ok := ecs.entities[ent.ID()]; ok {
 		delete(ecs.entities, ent.ID())
+		ent.SetID(EntityNone)
 		return nil
 	}
 
