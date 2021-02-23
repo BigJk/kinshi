@@ -6,10 +6,11 @@ import (
 )
 
 func getTypeName(s interface{}) string {
-	if reflect.TypeOf(s).Kind() == reflect.Ptr {
-		return reflect.TypeOf(s).Elem().Name()
+	t := reflect.TypeOf(s)
+	if t.Kind() == reflect.Ptr {
+		return t.Elem().Name()
 	}
-	return reflect.TypeOf(s).Name()
+	return t.Name()
 }
 
 func fetchPtrOfType(s interface{}, typeName string) (interface{}, error) {
