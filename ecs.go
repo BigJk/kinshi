@@ -243,14 +243,14 @@ func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
 
 	for i := range ecs.entities {
 		allFound := true
-		for i := range types {
+		for j := range types {
 			if val, ok := ecs.metaCache[ecs.entities[i].typeName]; ok {
-				if _, ok := val.fields[getTypeName(types[i])]; ok {
+				if _, ok := val.fields[getTypeName(types[j])]; ok {
 					continue
 				}
 			}
 
-			if dyn, ok := ecs.entities[i].ent.(DynamicEntity); ok && dyn.HasComponent(types[i]) == nil {
+			if dyn, ok := ecs.entities[i].ent.(DynamicEntity); ok && dyn.HasComponent(types[j]) == nil {
 
 			} else {
 				allFound = false
