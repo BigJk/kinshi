@@ -199,3 +199,32 @@ func BenchmarkECS_Iterate(b *testing.B) {
 		runForN(1000000, b)
 	})
 }
+
+func BenchmarkECS_View(b *testing.B) {
+	ecs := New()
+
+	id, _ := ecs.AddEntity(&Unit{
+		Health: Health{
+			Value: 100,
+			Max:   150,
+		},
+		Pos: Pos{
+			X: 0,
+			Y: 0,
+		},
+		Name: Name{
+			Value: "test",
+		},
+	})
+
+	wrap := ecs.MustGet(id)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		err := wrap.View(func(h *Health, p *Pos) {})
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
