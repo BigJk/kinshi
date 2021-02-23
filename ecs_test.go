@@ -148,8 +148,9 @@ func BenchmarkECS_AddEntity(b *testing.B) {
 }
 
 func BenchmarkECS_Iterate(b *testing.B) {
-	runForN := func(n int, b *testing.B) {
+	runForN := func(n int, g int, b *testing.B) {
 		ecs := New()
+		ecs.SetRoutineCount(g)
 
 		for i := 0; i < n/2; i++ {
 			_, _ = ecs.AddEntity(&Unit{
@@ -179,24 +180,70 @@ func BenchmarkECS_Iterate(b *testing.B) {
 		}
 	}
 
-	b.Run("100", func(b *testing.B) {
-		runForN(100, b)
+	// 1 go routines allowed
+
+	b.Run("1-100", func(b *testing.B) {
+		runForN(100, 1, b)
 	})
 
-	b.Run("1000", func(b *testing.B) {
-		runForN(1000, b)
+	b.Run("1-1000", func(b *testing.B) {
+		runForN(1000, 1, b)
 	})
 
-	b.Run("10000", func(b *testing.B) {
-		runForN(10000, b)
+	b.Run("1-10000", func(b *testing.B) {
+		runForN(10000, 1, b)
 	})
 
-	b.Run("100000", func(b *testing.B) {
-		runForN(100000, b)
+	b.Run("1-100000", func(b *testing.B) {
+		runForN(100000, 1, b)
 	})
 
-	b.Run("1000000", func(b *testing.B) {
-		runForN(1000000, b)
+	b.Run("1-1000000", func(b *testing.B) {
+		runForN(1000000, 1, b)
+	})
+
+	b.Run("2-100", func(b *testing.B) {
+		runForN(100, 2, b)
+	})
+
+	// 2 go routines allowed
+
+	b.Run("2-1000", func(b *testing.B) {
+		runForN(1000, 2, b)
+	})
+
+	b.Run("2-10000", func(b *testing.B) {
+		runForN(10000, 2, b)
+	})
+
+	b.Run("2-100000", func(b *testing.B) {
+		runForN(100000, 2, b)
+	})
+
+	b.Run("2-1000000", func(b *testing.B) {
+		runForN(1000000, 2, b)
+	})
+
+	// 4 go routines allowed
+
+	b.Run("4-100", func(b *testing.B) {
+		runForN(100, 4, b)
+	})
+
+	b.Run("4-1000", func(b *testing.B) {
+		runForN(1000, 4, b)
+	})
+
+	b.Run("4-10000", func(b *testing.B) {
+		runForN(10000, 4, b)
+	})
+
+	b.Run("4-100000", func(b *testing.B) {
+		runForN(100000, 4, b)
+	})
+
+	b.Run("4-1000000", func(b *testing.B) {
+		runForN(1000000, 4, b)
 	})
 }
 

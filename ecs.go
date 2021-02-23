@@ -29,6 +29,7 @@ type ECS struct {
 	idCounter uint64
 	entities  []entityEntry
 	metaCache map[string]typeMeta
+	routines  int
 }
 
 // New creates a new instance of a ECS
@@ -36,6 +37,7 @@ func New() *ECS {
 	return &ECS{
 		entities:  []entityEntry{},
 		metaCache: map[string]typeMeta{},
+		routines:  1,
 	}
 }
 
@@ -76,6 +78,16 @@ func (ecs *ECS) findEntity(id EntityID) (*entityEntry, int, bool) {
 		return nil, 0, false
 	}
 	return &ecs.entities[found], found, true
+}
+
+// SetRoutineCount sets the number of go routines
+// that are allowed to spawn to parallelize searches
+// over the entities.
+func (ecs *ECS) SetRoutineCount(n int) {
+	ecs.Lock()
+	defer ecs.Unlock()
+
+	ecs.routines = n
 }
 
 // AddEntity adds a Entity to the ECS storage and
@@ -239,28 +251,48 @@ func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
 	ecs.Lock()
 	defer ecs.Unlock()
 
+	wg := sync.WaitGroup{}
+	mtx := sync.Mutex{}
+
+	wg.Add(ecs.routines)
+
 	var foundEnts []*EntityWrap
 
-	for i := range ecs.entities {
-		allFound := true
-		for j := range types {
-			if val, ok := ecs.metaCache[ecs.entities[i].typeName]; ok {
-				if _, ok := val.fields[getTypeName(types[j])]; ok {
-					continue
+	step := len(ecs.entities)/ecs.routines + 1
+	for w := 0; w < ecs.routines; w++ {
+		go func(start int, l int) {
+			var localFoundEnts []*EntityWrap
+
+			for i := start; i < start+l && i < len(ecs.entities); i++ {
+				allFound := true
+				for j := range types {
+					if val, ok := ecs.metaCache[ecs.entities[i].typeName]; ok {
+						if _, ok := val.fields[getTypeName(types[j])]; ok {
+							continue
+						}
+					}
+
+					if dyn, ok := ecs.entities[i].ent.(DynamicEntity); ok && dyn.HasComponent(types[j]) == nil {
+
+					} else {
+						allFound = false
+						break
+					}
+				}
+				if allFound {
+					localFoundEnts = append(localFoundEnts, &EntityWrap{parent: ecs, ent: ecs.entities[i].ent})
 				}
 			}
 
-			if dyn, ok := ecs.entities[i].ent.(DynamicEntity); ok && dyn.HasComponent(types[j]) == nil {
+			mtx.Lock()
+			foundEnts = append(foundEnts, localFoundEnts...)
+			mtx.Unlock()
 
-			} else {
-				allFound = false
-				break
-			}
-		}
-		if allFound {
-			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: ecs.entities[i].ent})
-		}
+			wg.Done()
+		}(step*w, step)
 	}
+
+	wg.Wait()
 
 	return foundEnts
 }
@@ -277,14 +309,31 @@ func (ecs *ECS) IterateSpecific(t interface{}) EntityIterator {
 	ecs.Lock()
 	defer ecs.Unlock()
 
+	wg := sync.WaitGroup{}
+	mtx := sync.Mutex{}
+
+	wg.Add(ecs.routines)
+
 	var foundEnts []*EntityWrap
 
 	searchName := getTypeName(t)
+	step := len(ecs.entities)/ecs.routines + 1
+	for w := 0; w < ecs.routines; w++ {
+		var localFoundEnts []*EntityWrap
 
-	for i := range ecs.entities {
-		if ecs.entities[i].typeName == searchName {
-			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: ecs.entities[i].ent})
-		}
+		go func(start int, l int) {
+			for i := start; i < start+l && i < len(ecs.entities); i++ {
+				if ecs.entities[i].typeName == searchName {
+					foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: ecs.entities[i].ent})
+				}
+			}
+
+			mtx.Lock()
+			foundEnts = append(foundEnts, localFoundEnts...)
+			mtx.Unlock()
+
+			wg.Done()
+		}(step*w, step)
 	}
 
 	return foundEnts
