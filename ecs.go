@@ -336,6 +336,8 @@ func (ecs *ECS) IterateSpecific(t interface{}) EntityIterator {
 		}(step*w, step)
 	}
 
+	wg.Wait()
+
 	return foundEnts
 }
 
