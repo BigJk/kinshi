@@ -174,7 +174,7 @@ func (ew *EntityWrap) View(fn interface{}) error {
 //
 // For example you want to get a view on the Player{} Entity struct:
 //    ew.ViewSpecific(func(p *Player) {
-//    	fmt.Println(p.Name)
+//        fmt.Println(p.Name)
 //    })
 func (ew *EntityWrap) ViewSpecific(fn interface{}) error {
 	if reflect.TypeOf(fn).Kind() != reflect.Func {
