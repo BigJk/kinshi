@@ -147,7 +147,7 @@ func (b *BaseDynamicEntity) GetComponents() []interface{} {
 
 	var comps []interface{}
 	for _, v := range b.components {
-		comps = append(comps, reflect.ValueOf(v).Addr().Interface())
+		comps = append(comps, reflect.ValueOf(v).Interface())
 	}
 
 	return comps
