@@ -1,8 +1,11 @@
 package kinshi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mitchellh/mapstructure"
+	"io"
 	"reflect"
 	"sort"
 	"sync"
@@ -19,25 +22,33 @@ type typeMeta struct {
 	fields map[string]struct{}
 }
 
+type serializedEntity struct {
+	ID         EntityID
+	Type       string
+	Components map[string]interface{}
+}
+
 type entityEntry struct {
-	typeName string
-	ent      Entity
+	TypeName string `json:"type_name"`
+	Ent      Entity `json:"ent"`
 }
 
 type ECS struct {
 	sync.Mutex
-	idCounter uint64
-	entities  []entityEntry
-	metaCache map[string]typeMeta
-	routines  int
+	idCounter     uint64
+	entities      []entityEntry
+	metaCache     map[string]typeMeta
+	compMetaCache map[string]reflect.Type
+	routines      int
 }
 
 // New creates a new instance of a ECS
 func New() *ECS {
 	return &ECS{
-		entities:  []entityEntry{},
-		metaCache: map[string]typeMeta{},
-		routines:  1,
+		entities:      []entityEntry{},
+		metaCache:     map[string]typeMeta{},
+		compMetaCache: map[string]reflect.Type{},
+		routines:      1,
 	}
 }
 
@@ -47,6 +58,10 @@ func (ecs *ECS) nextId() EntityID {
 
 	ecs.idCounter += 1
 	return EntityID(ecs.idCounter)
+}
+
+func (ecs *ECS) cacheComponent(name string, t reflect.Type) {
+	ecs.compMetaCache[name] = t
 }
 
 func (ecs *ECS) cacheType(ent Entity) {
@@ -65,6 +80,7 @@ func (ecs *ECS) cacheType(ent Entity) {
 		field := t.Field(i)
 		if field.Type.Kind() == reflect.Struct {
 			ecs.metaCache[tn].fields[field.Name] = struct{}{}
+			ecs.cacheComponent(field.Type.Name(), field.Type)
 		}
 	}
 }
@@ -72,12 +88,139 @@ func (ecs *ECS) cacheType(ent Entity) {
 func (ecs *ECS) findEntity(id EntityID) (*entityEntry, int, bool) {
 	l := len(ecs.entities)
 	found := sort.Search(l, func(i int) bool {
-		return ecs.entities[i].ent.ID() >= id
+		return ecs.entities[i].Ent.ID() >= id
 	})
 	if found == l {
 		return nil, 0, false
 	}
 	return &ecs.entities[found], found, true
+}
+
+// Unmarshal reads a JSON encoded ECS snapshot and loads
+// all the entities from it. The inner storage will be overwritten
+// so all entities that have been added before will be deleted.
+//
+// Important: If you want to serialize dynamic entities you need
+// to register all possible components with RegisterComponent()
+// before!
+func (ecs *ECS) Unmarshal(reader io.Reader) error {
+	ecs.Lock()
+	defer ecs.Unlock()
+
+	var ses []serializedEntity
+
+	dec := json.NewDecoder(reader)
+	if err := dec.Decode(&ses); err != nil {
+		return err
+	}
+
+	ecs.entities = []entityEntry{}
+
+	for i := range ses {
+		ent := entityEntry{
+			TypeName: ses[i].Type,
+			Ent:      nil,
+		}
+
+		if meta, ok := ecs.metaCache[ses[i].Type]; ok {
+			newInstance := reflect.New(meta.t)
+
+			for comp, val := range ses[i].Components {
+				field := newInstance.Elem().FieldByName(comp)
+				if field.IsValid() {
+					if err := mapstructure.Decode(val, field.Addr().Interface()); err != nil {
+						// TODO: Error handling
+						continue
+					}
+				} else {
+					if dyn, ok := newInstance.Interface().(DynamicEntity); ok {
+						if compType, ok := ecs.compMetaCache[comp]; ok {
+							newComponent := reflect.New(compType)
+
+							if err := mapstructure.Decode(val, newComponent.Interface()); err != nil {
+								// TODO: Error handling
+								continue
+							}
+
+							_ = dyn.SetComponent(newComponent.Interface())
+						}
+					}
+				}
+			}
+
+			ent.Ent = newInstance.Interface().(Entity)
+			ent.Ent.SetID(ses[i].ID)
+			ecs.entities = append(ecs.entities, ent)
+		}
+	}
+
+	if len(ecs.entities) > 0 {
+		ecs.idCounter = uint64(ecs.entities[len(ecs.entities)-1].Ent.ID()) + 1
+	} else {
+		ecs.idCounter = 0
+	}
+
+	return nil
+}
+
+// Marshal encodes all entities into JSON.
+func (ecs *ECS) Marshal(writer io.Writer) error {
+	ecs.Lock()
+	defer ecs.Unlock()
+
+	var ses []serializedEntity
+	for i := range ecs.entities {
+		se := serializedEntity{
+			ID:         ecs.entities[i].Ent.ID(),
+			Type:       ecs.entities[i].TypeName,
+			Components: map[string]interface{}{},
+		}
+
+		val := reflect.ValueOf(ecs.entities[i].Ent).Elem()
+		for j := 0; j < val.NumField(); j++ {
+			name := val.Type().Field(j).Name
+			if name == "BaseEntity" || name == "BaseDynamicEntity" {
+				continue
+			}
+
+			field := val.Field(j)
+			if field.Kind() != reflect.Struct {
+				continue
+			}
+
+			se.Components[name] = field.Interface()
+		}
+
+		if dyn, ok := ecs.entities[i].Ent.(DynamicEntity); ok {
+			comps := dyn.GetComponents()
+			for i := range comps {
+				se.Components[getTypeName(comps[i])] = comps[i]
+			}
+		}
+
+		ses = append(ses, se)
+	}
+
+	enc := json.NewEncoder(writer)
+	enc.SetIndent("", "\t")
+	return enc.Encode(ses)
+}
+
+// RegisterEntity caches information about a entity.
+func (ecs *ECS) RegisterEntity(ent Entity) {
+	ecs.cacheType(ent)
+}
+
+// RegisterComponent caches information about components
+// this is needed if you want to serialize dynamic entities
+// as the reflection information needs to be available
+// before the unmarshal.
+func (ecs *ECS) RegisterComponent(c interface{}) {
+	if reflect.ValueOf(c).Kind() == reflect.Ptr {
+		ecs.cacheComponent(getTypeName(c), reflect.TypeOf(c).Elem())
+	} else {
+		ecs.cacheComponent(getTypeName(c), reflect.TypeOf(c))
+	}
 }
 
 // SetRoutineCount sets the number of go routines
@@ -111,8 +254,8 @@ func (ecs *ECS) AddEntity(ent Entity) (EntityID, error) {
 	}
 
 	ecs.entities = append(ecs.entities, entityEntry{
-		typeName: getTypeName(ent),
-		ent:      ent,
+		TypeName: getTypeName(ent),
+		Ent:      ent,
 	})
 	return ent.ID(), nil
 }
@@ -267,13 +410,13 @@ func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
 			for i := start; i < start+l && i < len(ecs.entities); i++ {
 				allFound := true
 				for j := range types {
-					if val, ok := ecs.metaCache[ecs.entities[i].typeName]; ok {
+					if val, ok := ecs.metaCache[ecs.entities[i].TypeName]; ok {
 						if _, ok := val.fields[getTypeName(types[j])]; ok {
 							continue
 						}
 					}
 
-					if dyn, ok := ecs.entities[i].ent.(DynamicEntity); ok && dyn.HasComponent(types[j]) == nil {
+					if dyn, ok := ecs.entities[i].Ent.(DynamicEntity); ok && dyn.HasComponent(types[j]) == nil {
 
 					} else {
 						allFound = false
@@ -281,7 +424,7 @@ func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
 					}
 				}
 				if allFound {
-					localFoundEnts = append(localFoundEnts, &EntityWrap{parent: ecs, ent: ecs.entities[i].ent})
+					localFoundEnts = append(localFoundEnts, &EntityWrap{parent: ecs, ent: ecs.entities[i].Ent})
 				}
 			}
 
@@ -324,8 +467,8 @@ func (ecs *ECS) IterateSpecific(t interface{}) EntityIterator {
 
 		go func(start int, l int) {
 			for i := start; i < start+l && i < len(ecs.entities); i++ {
-				if ecs.entities[i].typeName == searchName {
-					foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: ecs.entities[i].ent})
+				if ecs.entities[i].TypeName == searchName {
+					foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: ecs.entities[i].Ent})
 				}
 			}
 
@@ -352,7 +495,7 @@ func (ecs *ECS) IterateID(ids ...EntityID) EntityIterator {
 
 	for i := range ids {
 		if v, _, ok := ecs.findEntity(ids[i]); ok {
-			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: v.ent})
+			foundEnts = append(foundEnts, &EntityWrap{parent: ecs, ent: v.Ent})
 		}
 	}
 
@@ -365,7 +508,7 @@ func (ecs *ECS) Get(id EntityID) (*EntityWrap, error) {
 	defer ecs.Unlock()
 
 	if v, _, ok := ecs.findEntity(id); ok {
-		return &EntityWrap{parent: ecs, ent: v.ent}, nil
+		return &EntityWrap{parent: ecs, ent: v.Ent}, nil
 	}
 	return nil, ErrNotFound
 }

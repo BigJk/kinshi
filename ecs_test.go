@@ -1,6 +1,7 @@
 package kinshi
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"strings"
@@ -40,6 +41,11 @@ type DynamicUnit struct {
 
 func TestECS(t *testing.T) {
 	ecs := New()
+
+	ecs.RegisterComponent(&Health{})
+	ecs.RegisterComponent(&Velocity{})
+	ecs.RegisterComponent(&Pos{})
+	ecs.RegisterComponent(&Name{})
 
 	nameMap := map[string]EntityID{}
 
@@ -122,6 +128,32 @@ func TestECS(t *testing.T) {
 			assert.NoError(t, ecs.MustGet(ent.GetEntity().ID()).View(func(n *Name) {
 				assert.Equal(t, fmt.Sprint(i), n.Value, "change wasn't observed")
 			}), "failed while view")
+		}
+	})
+
+	t.Run("Marshal/Unmarshal", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		if !assert.NoError(t, ecs.Marshal(buf), "couldn't marshal ECS") {
+			return
+		}
+
+		oldState := ecs.entities
+		ecs.entities = []entityEntry{}
+		if !assert.NoError(t, ecs.Unmarshal(buf), "couldn't marshal ECS") {
+			return
+		}
+
+		if !assert.Len(t, ecs.entities, len(oldState), "unmarshal resulted in different length") {
+			return
+		}
+
+		for i := range oldState {
+			if !assert.Equal(t, oldState[i].Ent.ID(), ecs.entities[i].Ent.ID()) {
+				return
+			}
+			if !assert.EqualValues(t, oldState[i].Ent, ecs.entities[i].Ent) {
+				return
+			}
 		}
 	})
 }
