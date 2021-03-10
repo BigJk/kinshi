@@ -178,6 +178,7 @@ func (ew *EntityWrap) View(fn interface{}) error {
 					return err
 				}
 				callInstances = append(callInstances, reflect.ValueOf(ptr))
+				continue
 			} else {
 				return err
 			}

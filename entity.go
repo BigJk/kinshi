@@ -1,6 +1,7 @@
 package kinshi
 
 import (
+	"fmt"
 	"reflect"
 	"sync"
 )
@@ -60,6 +61,10 @@ func (b *BaseDynamicEntity) SetComponent(c interface{}) error {
 	b.Lock()
 	defer b.Unlock()
 
+	if reflect.TypeOf(c).Kind() != reflect.Ptr {
+		return fmt.Errorf("component needs to be passed as pointer")
+	}
+
 	if b.components == nil {
 		b.components = map[string]interface{}{}
 	}
@@ -97,7 +102,7 @@ func (b *BaseDynamicEntity) GetComponent(t string) (interface{}, error) {
 	}
 
 	if val, ok := b.components[t]; ok {
-		return reflect.ValueOf(val).Addr().Interface(), nil
+		return val, nil
 	}
 
 	return nil, ErrNotFound

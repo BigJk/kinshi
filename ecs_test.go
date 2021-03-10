@@ -70,7 +70,7 @@ func TestECS(t *testing.T) {
 					Value: fmt.Sprintf("DynamicUnit %d", i),
 				},
 			}
-			assert.NoError(t, dynUnit.SetComponent(Velocity{
+			assert.NoError(t, dynUnit.SetComponent(&Velocity{
 				X: 0.5,
 				Y: 0.1,
 			}), "dynamic component insertion failed")
