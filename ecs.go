@@ -335,8 +335,8 @@ func (ew *EntityWrap) View(fn interface{}) error {
 	// If the user supplied function returns a error return it
 	if len(res) == 1 {
 		if res[0].Interface() != nil {
-			err := res[0].Interface().(error)
-			if err != nil {
+			err, ok := res[0].Interface().(error)
+			if ok && err != nil {
 				return err
 			}
 		}
@@ -366,7 +366,17 @@ func (ew *EntityWrap) ViewSpecific(fn interface{}) error {
 	ew.parent.RLock()
 	defer ew.parent.RUnlock()
 
-	reflect.ValueOf(fn).Call([]reflect.Value{reflect.ValueOf(ew.ent)})
+	res := reflect.ValueOf(fn).Call([]reflect.Value{reflect.ValueOf(ew.ent)})
+
+	// If the user supplied function returns a error return it
+	if len(res) == 1 {
+		if res[0].Interface() != nil {
+			err, ok := res[0].Interface().(error)
+			if ok && err != nil {
+				return err
+			}
+		}
+	}
 
 	return nil
 }
