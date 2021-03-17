@@ -34,7 +34,7 @@ type entityEntry struct {
 }
 
 type ECS struct {
-	sync.Mutex
+	sync.RWMutex
 	idCounter     uint64
 	entities      []entityEntry
 	metaCache     map[string]typeMeta
@@ -307,8 +307,8 @@ func (ew *EntityWrap) View(fn interface{}) error {
 	fnType := reflect.TypeOf(fn)
 	var callInstances []reflect.Value
 
-	ew.parent.Lock()
-	defer ew.parent.Unlock()
+	ew.parent.RLock()
+	defer ew.parent.RUnlock()
 
 	for i := 0; i < fnType.NumIn(); i++ {
 		compName := fnType.In(i).Elem().Name()
@@ -363,8 +363,8 @@ func (ew *EntityWrap) ViewSpecific(fn interface{}) error {
 		return fmt.Errorf("fn needs a single argument")
 	}
 
-	ew.parent.Lock()
-	defer ew.parent.Unlock()
+	ew.parent.RLock()
+	defer ew.parent.RUnlock()
 
 	reflect.ValueOf(fn).Call([]reflect.Value{reflect.ValueOf(ew.ent)})
 
@@ -392,8 +392,8 @@ func (it EntityIterator) Count() int {
 //        // Work with the EntityWrap
 //    }
 func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
-	ecs.Lock()
-	defer ecs.Unlock()
+	ecs.RLock()
+	defer ecs.RUnlock()
 
 	wg := sync.WaitGroup{}
 	mtx := sync.Mutex{}
@@ -450,8 +450,8 @@ func (ecs *ECS) Iterate(types ...interface{}) EntityIterator {
 //        // Work with the EntityWrap
 //    }
 func (ecs *ECS) IterateSpecific(t interface{}) EntityIterator {
-	ecs.Lock()
-	defer ecs.Unlock()
+	ecs.RLock()
+	defer ecs.RUnlock()
 
 	wg := sync.WaitGroup{}
 	mtx := sync.Mutex{}
@@ -488,8 +488,8 @@ func (ecs *ECS) IterateSpecific(t interface{}) EntityIterator {
 // IterateID returns a iterator that can be range'd over for
 // the given Entity ids.
 func (ecs *ECS) IterateID(ids ...EntityID) EntityIterator {
-	ecs.Lock()
-	defer ecs.Unlock()
+	ecs.RLock()
+	defer ecs.RUnlock()
 
 	var foundEnts []*EntityWrap
 
@@ -504,8 +504,8 @@ func (ecs *ECS) IterateID(ids ...EntityID) EntityIterator {
 
 // Get fetches a Entity by id.
 func (ecs *ECS) Get(id EntityID) (*EntityWrap, error) {
-	ecs.Lock()
-	defer ecs.Unlock()
+	ecs.RLock()
+	defer ecs.RUnlock()
 
 	if v, _, ok := ecs.findEntity(id); ok {
 		return &EntityWrap{parent: ecs, ent: v.Ent}, nil
